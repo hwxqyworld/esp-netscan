@@ -164,9 +164,9 @@ static void led_status_task(void *param)
 		switch (g_led_status) {
 			case LED_SCAN:
 				gpio_set_level(LED_GPIO, 1);
-				vTaskDelay(pdMS_TO_TICKS(300));
+				vTaskDelay(pdMS_TO_TICKS(1000));
 				gpio_set_level(LED_GPIO, 0);
-				vTaskDelay(pdMS_TO_TICKS(700));
+				vTaskDelay(pdMS_TO_TICKS(1000));
 				break;
 			case LED_DONE:
 				gpio_set_level(LED_GPIO, 1);
@@ -179,7 +179,7 @@ static void led_status_task(void *param)
 				vTaskDelay(pdMS_TO_TICKS(100));
 				break;
 			default:
-				gpio_set_level(LED_GPIO, 0);
+				gpio_set_level(LED_GPIO, 1);
 				vTaskDelay(pdMS_TO_TICKS(1000));
 				break;
 		}
