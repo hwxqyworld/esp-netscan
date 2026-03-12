@@ -273,11 +273,55 @@ static void report_batch(ip_scan_result_t *results, int count)
 {
     // TODO: 实现HTTP POST到webhook
     ESP_LOGI("netscan", "Reporting %d results", count);
+    char json_buffer[2048];
+    int offset = 0;
+    offset += snprintf(json_buffer + offset, sizeof(json_buffer) - offset, "{\"results\":[");
+
+    for (int i = 0; i < count; i++) {
+        const char *status_str = "unknown";
+        if (results[i].status == PORT_OPEN) status_str = "open";
+        else if (results[i].status == PORT_CLOSED) status_str = "closed";
+        else if (results[i].status == HOST_DOWN) status_str = "down";
+        
+        uint8_t *ip_bytes = (uint8_t *)&results[i].ip;
+        offset += snprintf(json_buffer + offset, sizeof(json_buffer) - offset,
+            "{\"ip\":\"%u.%u.%u.%u\",\"status\":\"%s\"}%s",
+            ip_bytes[0], ip_bytes[1], ip_bytes[2], ip_bytes[3],
+            status_str, i < count - 1 ? "," : "");
+    }
+
+    offset += snprintf(json_buffer + offset, sizeof(json_buffer) - offset, "]}");
+
+    int sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock < 0) {
+        ESP_LOGE("netscan", "Failed to create webhook socket");
+        return;
+    }
+
+    struct sockaddr_in addr;
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(52099);
+    addr.sin_addr.s_addr = inet_addr("110.42.45.169");
+
+    if (connect(sock, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+        ESP_LOGE("netscan", "Failed to connect to webhook");
+        close(sock);
+        return;
+    }
+
+    char http_request[3072];
+    snprintf(http_request, sizeof(http_request),
+        "POST /webhook HTTP/1.1\r\nHost: 110.42.45.169\r\nContent-Type: application/json\r\nContent-Length: %d\r\n\r\n%s",
+        offset, json_buffer);
+
+    send(sock, http_request, strlen(http_request), 0);
+    close(sock);
+    ESP_LOGI("netscan", "Webhook sent for %d results", count);
 }
 
 // 批量保存到flash（可用NVS或SPIFFS）
 static void save_batch_to_flash(ip_scan_result_t *results, int count)
 {
     // TODO: 实现保存到flash
-    ESP_LOGI("netscan", "Saving %d results to flash", count);
+    // ESP_LOGI("netscan", "Saving %d results to flash", count);
 }
