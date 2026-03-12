@@ -81,6 +81,20 @@ void app_main(void)
 	xTaskCreate(led_status_task, "led_status", 1024, NULL, 2, &led_task_handle);
 	set_led_status(LED_SCAN);
 
+    // 初始化WiFi
+    esp_event_loop_create_default();
+    esp_wifi_init(&(wifi_init_config_t)WIFI_INIT_CONFIG_DEFAULT());
+    esp_wifi_set_mode(WIFI_MODE_STA);
+    esp_wifi_config_t wifi_config = {
+        .sta = {
+            .ssid = "FMZ001",
+            .password = "1357924680000",
+        },
+    };
+    esp_wifi_set_config(WIFI_IF_STA, &wifi_config);
+    esp_wifi_start();
+    ESP_LOGI("netscan", "WiFi connecting...");
+
 	task_queue = xQueueCreate(32, sizeof(scan_task_t));
 	result_queue = xQueueCreate(32, sizeof(ip_scan_result_t));
 
