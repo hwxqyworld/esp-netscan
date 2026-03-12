@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <stdlib.h>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -271,51 +272,75 @@ static ip_status_t scan_ip(uint32_t ip)
 // 批量上报（需实现webhook HTTP POST）
 static void report_batch(ip_scan_result_t *results, int count)
 {
-    // TODO: 实现HTTP POST到webhook
     ESP_LOGI("netscan", "Reporting %d results", count);
-    char json_buffer[2048];
+
+    // 分配足够大的缓冲区（你100条记录大概需要5~8KB）
+    size_t json_size = 8192;
+    char *json_buffer = malloc(json_size);
+    if (!json_buffer) {
+        ESP_LOGE("netscan", "malloc json_buffer failed");
+        return;
+    }
+
     int offset = 0;
-    offset += snprintf(json_buffer + offset, sizeof(json_buffer) - offset, "{\"results\":[");
+    offset += snprintf(json_buffer + offset, json_size - offset, "{\"results\":[");
 
     for (int i = 0; i < count; i++) {
         const char *status_str = "unknown";
         if (results[i].status == PORT_OPEN) status_str = "open";
         else if (results[i].status == PORT_CLOSED) status_str = "closed";
         else if (results[i].status == HOST_DOWN) status_str = "down";
-        
+
         uint8_t *ip_bytes = (uint8_t *)&results[i].ip;
-        offset += snprintf(json_buffer + offset, sizeof(json_buffer) - offset,
+
+        offset += snprintf(json_buffer + offset, json_size - offset,
             "{\"ip\":\"%u.%u.%u.%u\",\"status\":\"%s\"}%s",
             ip_bytes[0], ip_bytes[1], ip_bytes[2], ip_bytes[3],
             status_str, i < count - 1 ? "," : "");
+
+        if (offset >= json_size - 128) {
+            ESP_LOGW("netscan", "json_buffer nearly full, truncating");
+            break;
+        }
     }
 
-    offset += snprintf(json_buffer + offset, sizeof(json_buffer) - offset, "]}");
+    offset += snprintf(json_buffer + offset, json_size - offset, "]}");
 
-    int sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (sock < 0) {
-        ESP_LOGE("netscan", "Failed to create webhook socket");
+    // HTTP 请求缓冲区
+    size_t req_size = 12288;
+    char *http_request = malloc(req_size);
+    if (!http_request) {
+        ESP_LOGE("netscan", "malloc http_request failed");
+        free(json_buffer);
         return;
     }
 
-    struct sockaddr_in addr;
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(52099);
-    addr.sin_addr.s_addr = inet_addr("110.42.45.169");
-
-    if (connect(sock, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-        ESP_LOGE("netscan", "Failed to connect to webhook");
-        close(sock);
-        return;
-    }
-
-    char http_request[3072];
-    snprintf(http_request, sizeof(http_request),
-        "POST /webhook HTTP/1.1\r\nHost: 110.42.45.169\r\nContent-Type: application/json\r\nContent-Length: %d\r\n\r\n%s",
+    snprintf(http_request, req_size,
+        "POST /webhook HTTP/1.1\r\n"
+        "Host: 110.42.45.169\r\n"
+        "Content-Type: application/json\r\n"
+        "Content-Length: %d\r\n\r\n%s",
         offset, json_buffer);
 
-    send(sock, http_request, strlen(http_request), 0);
-    close(sock);
+    int sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock >= 0) {
+        struct sockaddr_in addr = {
+            .sin_family = AF_INET,
+            .sin_port = htons(52099),
+            .sin_addr.s_addr = inet_addr("110.42.45.169"),
+        };
+
+        if (connect(sock, (struct sockaddr *)&addr, sizeof(addr)) == 0) {
+            send(sock, http_request, strlen(http_request), 0);
+        } else {
+            ESP_LOGE("netscan", "connect failed");
+        }
+        close(sock);
+    }
+
+    free(http_request);
+    free(json_buffer);
+
     ESP_LOGI("netscan", "Webhook sent for %d results", count);
 }
 
