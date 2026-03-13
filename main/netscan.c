@@ -81,19 +81,34 @@ void app_main(void)
     xTaskCreate(led_status_task, "led_status", 1024, NULL, 2, &led_task_handle);
     set_led_status(LED_SCAN);
 
-    // 初始化WiFi
+    // 初始化 WiFi
     esp_event_loop_create_default();
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     esp_wifi_init(&cfg);
+
+    // 关键：关闭省电模式（C3 默认开启会导致连接不稳定）
+    esp_wifi_set_ps(WIFI_PS_NONE);
+
+    // 关键：清理上一次连接状态
+    esp_wifi_disconnect();
+    vTaskDelay(200 / portTICK_PERIOD_MS);
+
     esp_wifi_set_mode(WIFI_MODE_STA);
+
+    // 配置 WiFi
     wifi_config_t wifi_config = {
         .sta = {
             .ssid = "FMZ001_Wi-Fi5",
             .password = "1357924680000",
+            .threshold.authmode = WIFI_AUTH_WPA2_PSK,
+            .scan_method = WIFI_ALL_CHANNEL_SCAN,   // C3 推荐全信道扫描
+            .sort_method = WIFI_CONNECT_AP_BY_SIGNAL,
         },
     };
+
     esp_wifi_set_config(WIFI_IF_STA, &wifi_config);
     esp_wifi_start();
+
     ESP_LOGI("netscan", "WiFi connecting...");
 
     task_queue = xQueueCreate(32, sizeof(scan_task_t));
