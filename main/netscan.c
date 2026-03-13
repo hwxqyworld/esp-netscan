@@ -157,6 +157,9 @@ void app_main(void)
         set_led_status(LED_DONE);
         ESP_LOGI("netscan", "Scan finished. Total: %u", total_ip);
     }
+    while (1) {
+        vTaskDelay(portMAX_DELAY);
+    }
 }
 // LED状态任务
 static void led_status_task(void *param)
@@ -333,7 +336,13 @@ static void report_batch(ip_scan_result_t *results, int count)
         if (connect(sock, (struct sockaddr *)&addr, sizeof(addr)) == 0) {
             send(sock, http_request, strlen(http_request), 0);
         } else {
-            ESP_LOGE("netscan", "connect failed");
+            int err = errno;
+            ESP_LOGE("netscan", "connect failed, errno=%d (%s)", err, strerror(err));
+            // 设置LED为错误状态并停止任务
+            set_led_status(LED_ERROR);
+            ESP_LOGE("netscan", "Stopping all tasks due to webhook connect failure");
+            vTaskDelay(pdMS_TO_TICKS(100)); // 确保日志输出
+            vTaskSuspend(NULL); // 停止当前任务（或可用esp_restart()重启设备）
         }
         close(sock);
     }
@@ -349,4 +358,17 @@ static void save_batch_to_flash(ip_scan_result_t *results, int count)
 {
     // TODO: 实现保存到flash
     // ESP_LOGI("netscan", "Saving %d results to flash", count);
+    // 暂时打印到串口
+    for (int i = 0; i < count; i++) {
+        const char *status_str = "unknown";
+        if (results[i].status == PORT_OPEN) status_str = "open";
+        else if (results[i].status == PORT_CLOSED) status_str = "closed";
+        else if (results[i].status == HOST_DOWN) status_str = "down";
+
+        uint8_t *ip_bytes = (uint8_t *)&results[i].ip;
+
+        ESP_LOGI("netscan", "Saved: %u.%u.%u.%u - %s",
+            ip_bytes[0], ip_bytes[1], ip_bytes[2], ip_bytes[3],
+            status_str);
+    }
 }
