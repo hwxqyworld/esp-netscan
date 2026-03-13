@@ -88,7 +88,7 @@ void app_main(void)
     esp_wifi_set_mode(WIFI_MODE_STA);
     wifi_config_t wifi_config = {
         .sta = {
-            .ssid = "FMZ001",
+            .ssid = "FMZ001_Wi-Fi5",
             .password = "1357924680000",
         },
     };
