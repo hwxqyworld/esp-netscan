@@ -111,6 +111,15 @@ void app_main(void)
 
     ESP_LOGI("netscan", "WiFi connecting...");
 
+    while(1) {
+        wifi_ap_record_t ap_info;
+        if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
+            ESP_LOGI("netscan", "Connected to WiFi: %s", ap_info.ssid);
+            break;
+        }
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
+    }
+
     task_queue = xQueueCreate(32, sizeof(scan_task_t));
     result_queue = xQueueCreate(32, sizeof(ip_scan_result_t));
 
